@@ -1,12 +1,16 @@
 import json
 import boto3
-import os
-import time
 from botocore.exceptions import ClientError
 
 # Constants
 BUCKET_NAME = '20ab2a0c-2726-4ba1-9c7c-7deae82941ff'
 STORAGE_FOLDER = 'sscc'
+
+# Initialize S3 client for Yandex Object Storage outside the handler for warm starts
+s3 = boto3.client(
+    service_name='s3',
+    endpoint_url='https://storage.yandexcloud.net'
+)
 
 def calculate_check_digit(number_str):
     """Calculates GS1 Modulo 10 check digit for an 17-digit string."""
@@ -52,12 +56,6 @@ def handler(event, context):
                 'body': json.dumps({'error': 'Extension must be a single digit'})
             }
 
-        # Initialize S3 client for Yandex Object Storage
-        s3 = boto3.client(
-            service_name='s3',
-            endpoint_url='https://storage.yandexcloud.net'
-        )
-
         object_key = f"{STORAGE_FOLDER}/{prefix}.json"
 
         try:
@@ -72,8 +70,6 @@ def handler(event, context):
             data['next_serial'] = new_serial
 
             # 3. Save back
-            # Note: Standard S3 API for put_object does not support If-Match for optimistic locking.
-            # For low intensity (1 call/sec), simple GET-then-PUT is acceptable.
             s3.put_object(
                 Bucket=BUCKET_NAME,
                 Key=object_key,
@@ -82,6 +78,8 @@ def handler(event, context):
 
             # 4. Generate SSCCs
             ssccs = []
+            # SSCC length is 18 digits: Extension(1) + Prefix + Serial + CheckDigit(1)
+            # Base number (before check digit) length is 17 digits.
             serial_len = 17 - 1 - len(prefix)
 
             if serial_len < 1:
