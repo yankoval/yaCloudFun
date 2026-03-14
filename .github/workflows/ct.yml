@@ -1,0 +1,42 @@
+name: Continuous Testing
+
+permissions:
+  id-token: write
+
+on:
+  pull_request:
+    branches:
+      - main
+
+env:
+  FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+  SA_ID: ${{ secrets.YC_SA_ID }}
+  FUNCTION_NAME: sscc-generator-ct
+  FUNCTION_RUNTIME: python311
+  FUNCTION_ENTRYPOINT: index.handler
+  FUNCTION_MEMORY: "128mb"
+  FUNCTION_SOURCEROOT: sscc_generator
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    environment: preprod
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy Function (CT)
+        id: sls-func
+        uses: yc-actions/yc-sls-function@v3.1.0
+        with:
+          yc-sa-id: ${{ env.SA_ID }}
+          folder-id: ${{ env.FOLDER_ID }}
+          function-name: ${{ env.FUNCTION_NAME }}
+          runtime: ${{ env.FUNCTION_RUNTIME }}
+          entrypoint: ${{ env.FUNCTION_ENTRYPOINT }}
+          memory: ${{ env.FUNCTION_MEMORY }}
+          source-root: ${{ env.FUNCTION_SOURCEROOT }}
+          environment-variables: |
+            AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          include: |
+            **/*.py
+            **/*.txt
