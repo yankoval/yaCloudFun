@@ -1,29 +1,33 @@
 import json
 import boto3
+import os
 from botocore.exceptions import ClientError
 
 # Constants
 BUCKET_NAME = '20ab2a0c-2726-4ba1-9c7c-7deae82941ff'
 STORAGE_FOLDER = 'sscc'
 
-# Initialize S3 client for Yandex Object Storage outside the handler for warm starts
-s3 = boto3.client(
-    service_name='s3',
-    endpoint_url='https://storage.yandexcloud.net'
-)
+def get_s3_client():
+    """Initializes the S3 client using environment variables."""
+    access_key = os.environ.get('AWS_ACCESS_KEY_ID')
+    secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
+
+    if not access_key or not secret_key:
+        raise ValueError("Missing S3 credentials. Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.")
+
+    return boto3.client(
+        service_name='s3',
+        endpoint_url='https://storage.yandexcloud.net',
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key
+    )
 
 def calculate_check_digit(number_str):
     """Calculates GS1 Modulo 10 check digit for an 17-digit string."""
-    # GS1 SSCC (18 digits)
-    # Positions 1 (rightmost, check digit) to 18 (leftmost)
-    # Even positions (2, 4, 6...): * 3
-    # Odd positions (3, 5, 7...): * 1
-
     total = 0
     # Process from right to left (excluding the check digit position)
     for i in range(len(number_str)):
         digit = int(number_str[-(i+1)])
-        # Position 2 is index 0 in reversed, Position 3 is index 1...
         if (i + 2) % 2 == 0:
             total += digit * 3
         else:
@@ -34,8 +38,16 @@ def calculate_check_digit(number_str):
 
 def handler(event, context):
     try:
-        # Parse input from body or query string parameters
-        # Support both for compatibility with different test tools
+        # 0. Initialize S3 client and check credentials
+        try:
+            s3 = get_s3_client()
+        except ValueError as ve:
+            return {
+                'statusCode': 401,
+                'body': json.dumps({'error': str(ve)})
+            }
+
+        # 1. Parse input from body or query string parameters
         body = {}
         if isinstance(event.get('body'), str):
             try:
@@ -46,8 +58,6 @@ def handler(event, context):
             body = event['body']
 
         params = event.get('queryStringParameters', {}) or {}
-
-        # Merge params into body, prioritizing query string
         input_data = {**body, **params}
 
         count = int(input_data.get('count', 1))
@@ -69,24 +79,24 @@ def handler(event, context):
         object_key = f"{STORAGE_FOLDER}/{prefix}.json"
 
         try:
-            # 1. Get current state
+            # 2. Get current state
             response = s3.get_object(Bucket=BUCKET_NAME, Key=object_key)
             data = json.loads(response['Body'].read().decode('utf-8'))
 
             current_serial = int(data.get('next_serial', 0))
 
-            # 2. Increment serial
+            # 3. Increment serial
             new_serial = current_serial + count
             data['next_serial'] = new_serial
 
-            # 3. Save back
+            # 4. Save back
             s3.put_object(
                 Bucket=BUCKET_NAME,
                 Key=object_key,
                 Body=json.dumps(data)
             )
 
-            # 4. Generate SSCCs
+            # 5. Generate SSCCs
             ssccs = []
             serial_len = 17 - 1 - len(prefix)
 
@@ -108,7 +118,6 @@ def handler(event, context):
 
                 base_number = extension + prefix + serial_str
                 check_digit = calculate_check_digit(base_number)
-                # Return 18-digit SSCC
                 sscc = base_number + check_digit
                 ssccs.append(sscc)
 
