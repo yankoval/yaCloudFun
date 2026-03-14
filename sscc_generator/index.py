@@ -92,10 +92,11 @@ def handler(event, context):
             data['next_serial'] = new_serial
 
             # 4. Save back
+            # boto3.put_object Body requires bytes
             s3.put_object(
                 Bucket=BUCKET_NAME,
                 Key=object_key,
-                Body=json.dumps(data)
+                Body=json.dumps(data).encode('utf-8')
             )
 
             # 5. Generate SSCCs

@@ -34,7 +34,7 @@ jobs:
           entrypoint: ${{ env.FUNCTION_ENTRYPOINT }}
           memory: ${{ env.FUNCTION_MEMORY }}
           source-root: ${{ env.FUNCTION_SOURCEROOT }}
-          environment-variables: |
+          environment: |
             AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
             AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
           include: |
