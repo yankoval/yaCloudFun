@@ -1,10 +1,13 @@
 # SSCC Generator Yandex Cloud Function
 
-This project provides a Yandex Cloud Function to generate Serial Shipping Container Codes (SSCC) according to the GS1 Modulo 10 algorithm. It maintains a persistent serial counter using Yandex Object Storage.
+This project provides a Yandex Cloud Function to generate Serial Shipping Container Codes (SSCC) according to the GS1 Modulo 10 algorithm. It maintains persistent serial counters using Yandex Object Storage.
 
 ## Features
-- **SSCC-18 Generation**: Generates 18-digit SSCC codes.
-- **Persistence**: Automatically increments and stores serial numbers in Yandex Object Storage.
+- **SSCC-18 Generation**: Generates valid 18-digit SSCC codes.
+- **Multi-Extension Support**: Separate counters for each extension digit (0-9).
+- **Default Extension**: Configurable default extension per prefix.
+- **Overflow Protection**: Automatically calculates available serial range based on prefix length and prevents counter overflow.
+- **Persistence**: Securely stores state in Yandex Object Storage.
 - **CI/CD**: Fully automated deployment via GitHub Actions with OIDC federation.
 - **Flexible Input**: Supports both JSON body and Query String parameters.
 
@@ -14,12 +17,20 @@ This project provides a Yandex Cloud Function to generate Serial Shipping Contai
 
 ## Prerequisites
 1. **Yandex Object Storage Bucket**: `20ab2a0c-2726-4ba1-9c7c-7deae82941ff`.
-2. **Counter Configuration**: Create a JSON file in the bucket at `sscc/{prefix}.json` (e.g., `sscc/460705179.json`) with initial content:
+2. **Counter Configuration**: Create a JSON file in the bucket at `sscc/{prefix}.json` (e.g., `sscc/460705179.json`).
+
+   **Modern Structure (Recommended):**
    ```json
    {
-     "next_serial": 0
+     "default_extension": "0",
+     "counters": {
+       "0": 0,
+       "1": 0
+     }
    }
    ```
+   *Note: The function is backward compatible and will automatically migrate old `{"next_serial": 0}` files.*
+
 3. **GitHub Secrets**:
    - `YC_FOLDER_ID`: Your Yandex Cloud Folder ID.
    - `YC_SA_ID`: Service Account ID with `functions.admin` role.
@@ -31,7 +42,7 @@ This project provides a Yandex Cloud Function to generate Serial Shipping Contai
 ### Function Input
 The function accepts the following parameters:
 - `prefix`: (Required) Your GS1 Company Prefix.
-- `extension`: (Optional, default "0") SSCC extension digit (0-9).
+- `extension`: (Optional) SSCC extension digit (0-9). If omitted, the `default_extension` from config is used.
 - `count`: (Optional, default 1) Number of codes to generate.
 
 ### Sample Request
@@ -39,31 +50,35 @@ The function accepts the following parameters:
 ```json
 {
   "prefix": "460705179",
-  "extension": "0",
+  "extension": "1",
   "count": 5
 }
 ```
+
+### Overflow Errors
+If the requested `count` exceeds the available serial range (e.g., a 12-digit prefix only leaves 4 digits for the serial), the function returns a `400 Bad Request` error.
 
 ## Troubleshooting Credentials
 
 If you receive a `SignatureDoesNotMatch` or `401 Unauthorized` error:
 
-1. **Static Access Keys**: Ensure you are using **Static Access Keys** (ID and Secret) generated for your service account, NOT an IAM token or temporary credentials.
-2. **Trailing Spaces**: Check that your GitHub Secrets do not contain leading or trailing spaces or newline characters.
+1. **Static Access Keys**: Ensure you are using **Static Access Keys** (ID and Secret) generated for your service account, NOT an IAM token.
+2. **Trailing Spaces**: Check that your GitHub Secrets do not contain leading or trailing spaces.
 3. **Permissions**: The service account associated with the keys must have at least `storage.viewer` and `storage.editor` roles for the specified bucket.
-4. **Bucket Location**: Ensure your bucket is located in the `ru-central1` region (default for Yandex Cloud).
+4. **Bucket Location**: Ensure your bucket is in the `ru-central1` region.
 
 ## Sample Python Client
 ```python
 import requests
 import json
 
-def get_sscc_codes(function_url, prefix, count=1, extension="0"):
+def get_sscc_codes(function_url, prefix, count=1, extension=None):
     payload = {
         "prefix": prefix,
-        "extension": extension,
         "count": count
     }
+    if extension is not None:
+        payload["extension"] = extension
 
     try:
         response = requests.post(function_url, json=payload)
@@ -80,7 +95,7 @@ def get_sscc_codes(function_url, prefix, count=1, extension="0"):
 URL = "https://functions.yandexcloud.net/YOUR_FUNCTION_ID"
 MY_PREFIX = "460705179"
 
-codes = get_sscc_codes(URL, MY_PREFIX, count=3)
+codes = get_sscc_codes(URL, MY_PREFIX, count=3, extension="1")
 if codes:
     print("Generated SSCC Codes:")
     for code in codes:
