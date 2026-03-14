@@ -15,11 +15,13 @@ def get_s3_client():
     if not access_key or not secret_key:
         raise ValueError("Missing S3 credentials. Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.")
 
+    # Yandex Object Storage requires a specific region (ru-central1) for signature calculation
     return boto3.client(
         service_name='s3',
         endpoint_url='https://storage.yandexcloud.net',
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key
+        region_name='ru-central1',
+        aws_access_key_id=access_key.strip(),
+        aws_secret_access_key=secret_key.strip()
     )
 
 def calculate_check_digit(number_str):
@@ -47,7 +49,7 @@ def handler(event, context):
                 'body': json.dumps({'error': str(ve)})
             }
 
-        # 1. Parse input from body or query string parameters
+        # 1. Parse input
         body = {}
         if isinstance(event.get('body'), str):
             try:

@@ -44,7 +44,16 @@ The function accepts the following parameters:
 }
 ```
 
-### Sample Python Client
+## Troubleshooting Credentials
+
+If you receive a `SignatureDoesNotMatch` or `401 Unauthorized` error:
+
+1. **Static Access Keys**: Ensure you are using **Static Access Keys** (ID and Secret) generated for your service account, NOT an IAM token or temporary credentials.
+2. **Trailing Spaces**: Check that your GitHub Secrets do not contain leading or trailing spaces or newline characters.
+3. **Permissions**: The service account associated with the keys must have at least `storage.viewer` and `storage.editor` roles for the specified bucket.
+4. **Bucket Location**: Ensure your bucket is located in the `ru-central1` region (default for Yandex Cloud).
+
+## Sample Python Client
 ```python
 import requests
 import json
