@@ -80,10 +80,12 @@ HTTP 409.
   exact-key record per source UUID; no LIST operation is used.
 
 The CT workflow uses isolated `_prnsrv-test/sscc-*` prefixes. Feature pushes run
-unit tests only and no longer overwrite `sscc-generator-ci`, because that URL is
-the single production allocator used by both legacy and new clients. Main
-deploys the backward-compatible upgrade to `sscc-generator-ci` after tests pass;
-the separate `sscc-generator` function is not part of this migration.
+unit tests only and do not overwrite either long-lived function. Main deploys
+the backward-compatible production allocator to `sscc-generator` with the
+production `sscc` counter. During migration, legacy clients may temporarily keep
+calling `sscc-generator-ci`; they are switched by configuration only after the
+new `sscc-generator` version passes live checks. The final state reserves
+`sscc-generator-ci` for tests with an isolated counter.
 
 ### Overflow Errors
 If the requested `count` exceeds the available serial range (e.g., a 12-digit prefix only leaves 4 digits for the serial), the function returns a `400 Bad Request` error.
