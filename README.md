@@ -81,8 +81,9 @@ HTTP 409.
 
 The CT workflow uses isolated `_prnsrv-test/sscc-*` prefixes. Feature pushes run
 unit tests only and no longer overwrite `sscc-generator-ci`, because that URL is
-still used by legacy production clients. Main deploys the production
-`sscc-generator` after tests pass.
+the single production allocator used by both legacy and new clients. Main
+deploys the backward-compatible upgrade to `sscc-generator-ci` after tests pass;
+the separate `sscc-generator` function is not part of this migration.
 
 ### Overflow Errors
 If the requested `count` exceeds the available serial range (e.g., a 12-digit prefix only leaves 4 digits for the serial), the function returns a `400 Bad Request` error.

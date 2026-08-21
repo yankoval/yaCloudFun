@@ -14,7 +14,7 @@ on:
 env:
   FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
   SA_ID: ${{ secrets.YC_SA_ID }}
-  FUNCTION_NAME: sscc-generator
+  FUNCTION_NAME: sscc-generator-ci
   FUNCTION_RUNTIME: python314
   FUNCTION_ENTRYPOINT: index.handler
   FUNCTION_MEMORY: "128mb"
