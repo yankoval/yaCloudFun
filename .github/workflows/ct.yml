@@ -12,16 +12,24 @@ env:
   FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
   SA_ID: ${{ secrets.YC_SA_ID }}
   FUNCTION_NAME: sscc-generator-ct
-  FUNCTION_RUNTIME: python311
+  FUNCTION_RUNTIME: python314
   FUNCTION_ENTRYPOINT: index.handler
   FUNCTION_MEMORY: "128mb"
   FUNCTION_SOURCEROOT: sscc_generator
 
 jobs:
   test:
+    environment: preprod
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install dependencies
+        run: python -m pip install -r sscc_generator/requirements.txt
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
       - name: Deploy Function (CT)
         id: sls-func
         uses: yc-actions/yc-sls-function@v3.1.0
@@ -32,7 +40,14 @@ jobs:
           runtime: ${{ env.FUNCTION_RUNTIME }}
           entrypoint: ${{ env.FUNCTION_ENTRYPOINT }}
           memory: ${{ env.FUNCTION_MEMORY }}
+          execution-timeout: "15"
           source-root: ${{ env.FUNCTION_SOURCEROOT }}
+          environment: |
+            AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            SSCC_BUCKET_NAME=20ab2a0c-2726-4ba1-9c7c-7deae82941ff
+            SSCC_STORAGE_FOLDER=_prnsrv-test/sscc-counters
+            SSCC_IDEMPOTENCY_FOLDER=_prnsrv-test/sscc-idempotency
           include: |
             **/*.py
             **/*.txt

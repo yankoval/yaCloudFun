@@ -8,6 +8,10 @@ This project provides a Yandex Cloud Function to generate Serial Shipping Contai
 - **Default Extension**: Configurable default extension per prefix.
 - **Overflow Protection**: Automatically calculates available serial range based on prefix length and prevents counter overflow.
 - **Persistence**: Securely stores state in Yandex Object Storage.
+- **Idempotent allocations**: `idempotency_key + source_hash` retries return
+  the original range and never advance the counter twice.
+- **Crash recovery**: a conditional claim and a short-lived pending allocation
+  in the counter object close the failure window between reservation and result.
 - **CI/CD**: Fully automated deployment via GitHub Actions with OIDC federation.
 - **Flexible Input**: Supports both JSON body and Query String parameters.
 
@@ -44,6 +48,12 @@ The function accepts the following parameters:
 - `prefix`: (Required) Your GS1 Company Prefix.
 - `extension`: (Optional) SSCC extension digit (0-9). If omitted, the `default_extension` from config is used.
 - `count`: (Optional, default 1) Number of codes to generate.
+- `idempotency_key`: (Optional for legacy callers) UUID of the source job.
+- `source_hash`: Required together with `idempotency_key`; SHA-256 of the
+  canonical source job.
+
+New callers must always send both idempotency fields. Legacy callers without
+them remain backward compatible and receive a new range on every request.
 
 ### Sample Request
 **POST** to function URL with JSON body:
@@ -51,9 +61,29 @@ The function accepts the following parameters:
 {
   "prefix": "460705179",
   "extension": "1",
-  "count": 5
+  "count": 5,
+  "idempotency_key": "5f40cb54-16ca-4f52-90ac-3c70a130aa0a",
+  "source_hash": "64 hexadecimal SHA-256 characters"
 }
 ```
+
+The response also contains a deterministic `allocation_id` and a `duplicate`
+flag. Reusing the UUID with a different hash, prefix, extension or count returns
+HTTP 409.
+
+## Storage contract
+
+- `SSCC_BUCKET_NAME` defaults to the current SSCC bucket.
+- `SSCC_STORAGE_FOLDER` defaults to `sscc` and contains the shared atomic
+  counters used by both old and new function deployments.
+- `SSCC_IDEMPOTENCY_FOLDER` defaults to `sscc-idempotency` and contains one
+  exact-key record per source UUID; no LIST operation is used.
+
+The CT workflow uses isolated `_prnsrv-test/sscc-*` prefixes. Feature pushes run
+unit tests only and no longer overwrite `sscc-generator-ci`, because that URL is
+the single production allocator used by both legacy and new clients. Main
+deploys the backward-compatible upgrade to `sscc-generator-ci` after tests pass;
+the separate `sscc-generator` function is not part of this migration.
 
 ### Overflow Errors
 If the requested `count` exceeds the available serial range (e.g., a 12-digit prefix only leaves 4 digits for the serial), the function returns a `400 Bad Request` error.
