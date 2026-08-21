@@ -24,8 +24,9 @@ DEFAULT_BUCKET_NAME = "20ab2a0c-2726-4ba1-9c7c-7deae82941ff"
 DEFAULT_STORAGE_FOLDER = "sscc"
 DEFAULT_IDEMPOTENCY_FOLDER = "sscc-idempotency"
 MAX_RETRIES = 5
-INITIAL_BACKOFF = 0.1
-MAX_BACKOFF = 1.0
+MAX_COUNTER_RETRIES = 20
+INITIAL_BACKOFF = 0.02
+MAX_BACKOFF = 0.5
 SOURCE_HASH_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
@@ -440,7 +441,7 @@ def _allocate(s3: Any, input_data: Mapping[str, Any]) -> dict[str, Any]:
         raise RequestError("Prefix must contain digits")
     counter_key = _counter_key(prefix)
 
-    for attempt in range(MAX_RETRIES):
+    for attempt in range(MAX_COUNTER_RETRIES):
         current = _read_json(s3, counter_key)
         if current is None:
             raise RuntimeError("Counter object disappeared")
@@ -497,11 +498,9 @@ def _allocate(s3: Any, input_data: Mapping[str, Any]) -> dict[str, Any]:
                 IfMatch=counter_etag,
             )
         except ClientError as exc:
-            if _is_precondition_failed(exc) and attempt < MAX_RETRIES - 1:
-                sleep_time = min(
-                    MAX_BACKOFF,
-                    INITIAL_BACKOFF * (2**attempt) + random.random() * 0.1,
-                )
+            if _is_precondition_failed(exc) and attempt < MAX_COUNTER_RETRIES - 1:
+                backoff_ceiling = min(MAX_BACKOFF, INITIAL_BACKOFF * (2**attempt))
+                sleep_time = random.uniform(0, backoff_ceiling)
                 logger.info("Concurrent counter update; retrying allocation")
                 time.sleep(sleep_time)
                 continue

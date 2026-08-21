@@ -188,6 +188,33 @@ class AllocatorTests(unittest.TestCase):
             self.s3.json(f"test-counters/{PREFIX}.json")["counters"]["0"],
         )
 
+    def test_counter_contention_can_outlive_legacy_five_retry_limit(self):
+        job_uuid = str(uuid.uuid4())
+        original_put_object = self.s3.put_object
+        conflicts_remaining = 8
+
+        def contended_put_object(**kwargs):
+            nonlocal conflicts_remaining
+            if (
+                kwargs["Key"] == f"test-counters/{PREFIX}.json"
+                and "IfMatch" in kwargs
+                and conflicts_remaining > 0
+            ):
+                conflicts_remaining -= 1
+                raise client_error("PreconditionFailed", "PutObject")
+            return original_put_object(**kwargs)
+
+        with patch.object(self.s3, "put_object", side_effect=contended_put_object):
+            with patch.object(index.time, "sleep", return_value=None):
+                response = index.handler(self.request(job_uuid=job_uuid, count=3), None)
+
+        self.assertEqual(200, response["statusCode"])
+        self.assertEqual(0, conflicts_remaining)
+        self.assertEqual(
+            103,
+            self.s3.json(f"test-counters/{PREFIX}.json")["counters"]["0"],
+        )
+
     def test_pending_claim_before_counter_update_is_recoverable(self):
         job_uuid = str(uuid.uuid4())
         source_hash = hashlib.sha256(b"source").hexdigest()
