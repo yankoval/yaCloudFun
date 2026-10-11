@@ -311,6 +311,16 @@ class AllocatorTests(unittest.TestCase):
             self.s3.json(f"test-counters/{PREFIX}.json")["counters"]["0"],
         )
 
+    def test_deployment_blocked_extension_fails_before_counter_read(self):
+        event = {"body": json.dumps({"prefix": PREFIX, "extension": "3", "count": 1})}
+        with patch.dict("os.environ", {"SSCC_BLOCKED_EXTENSIONS": "3"}), patch.object(
+            index, "get_s3_client", return_value=self.s3
+        ), patch.object(index, "_read_json", side_effect=AssertionError("counter read")) as read:
+            response = index.handler(event, None)
+        self.assertEqual(409, response["statusCode"])
+        read.assert_not_called()
+        self.assertEqual(100, self.s3.json(f"test-counters/{PREFIX}.json")["counters"]["0"])
+
 
 if __name__ == "__main__":
     unittest.main()
