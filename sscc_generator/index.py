@@ -200,6 +200,29 @@ def _parse_request(input_data: Mapping[str, Any], config: Mapping[str, Any]) -> 
     )
 
 
+def _assert_extension_allowed(request: AllocationRequest) -> None:
+    """Enforce deployment policy before reading or mutating the counter object."""
+    blocked = {
+        item.strip() for item in os.environ.get("SSCC_BLOCKED_EXTENSIONS", "").split(",")
+        if item.strip()
+    }
+    if request.extension in blocked:
+        raise RequestError("Requested SSCC extension is disabled", status_code=409)
+
+
+def _assert_explicit_extension_allowed(input_data: Mapping[str, Any]) -> None:
+    """Reject explicitly disabled extensions before any S3 counter access."""
+    if "extension" not in input_data:
+        return
+    extension = str(input_data["extension"])
+    blocked = {
+        item.strip() for item in os.environ.get("SSCC_BLOCKED_EXTENSIONS", "").split(",")
+        if item.strip()
+    }
+    if extension in blocked:
+        raise RequestError("Requested SSCC extension is disabled", status_code=409)
+
+
 def _json_bytes(value: Mapping[str, Any]) -> bytes:
     return json.dumps(
         value,
@@ -439,6 +462,7 @@ def _allocate(s3: Any, input_data: Mapping[str, Any]) -> dict[str, Any]:
     prefix = str(input_data.get("prefix", ""))
     if not prefix or not prefix.isdigit():
         raise RequestError("Prefix must contain digits")
+    _assert_explicit_extension_allowed(input_data)
     counter_key = _counter_key(prefix)
 
     for attempt in range(MAX_COUNTER_RETRIES):
@@ -448,6 +472,7 @@ def _allocate(s3: Any, input_data: Mapping[str, Any]) -> dict[str, Any]:
         raw_config, counter_etag = current
         config = _normalize_config(raw_config)
         request = _parse_request(input_data, config)
+        _assert_extension_allowed(request)
         serial_length = _serial_length(request.prefix)
 
         claim_etag: str | None = None
